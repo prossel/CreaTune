@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#ff00ff">
+    <title>CreaTune</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/magenta/1.23.1/magenta.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #f5f5f5;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 {
+            color: #ff00ff;
+            margin-bottom: 20px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 10px;
+            margin-bottom: 20px;
+        }
+        .sprite {
+            width: 50px;
+            height: 50px;
+            background-size: 50px 200px;
+            background-repeat: no-repeat;
+            background-position: 0 0;
+            margin: 0 auto;
+            cursor: pointer;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            transition: transform 0.2s;
+        }
+        .sprite:hover {
+            transform: scale(1.1);
+            border-color: #ff00ff;
+        }
+        .debug-container {
+            background-color: #222;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 5px;
+            height: 150px;
+            overflow-y: scroll;
+            text-align: left;
+            font-family: monospace;
+            margin-top: 20px;
+        }
+        .status {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        footer {
+            margin-top: 20px;
+            color: #666;
+            font-size: 0.8em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>CreaTune</h1>
+        <div class="grid" id="grid"></div>
+        <button id="playAll">Jouer tous les sons</button>
+        <div class="status" id="connection-status">WebSocket: Déconnecté</div>
+        <div class="debug-container" id="debug"></div>
+        <footer>CreaTune - PWA - Génération musicale basée sur les fruits et saisons</footer>
+    </div>
+
+    <script>
+        // Variables for the app
+        const fruits = [
+            'apple', 'banana', 'orange', 'strawberry', 'pear', 
+            'grape', 'watermelon', 'cherry', 'blueberry'
+        ];
+        const seasons = ['spring', 'summer', 'autumn', 'winter'];
+        const sprites = [];
+        let synth;
+        let socket;
+        
+        // Generate the sprites
+        function setupGrid() {
+            const grid = document.getElementById('grid');
+            
+            for (let i = 0; i < 9; i++) {
+                const sprite = document.createElement('div');
+                sprite.className = 'sprite';
+                sprite.id = `sprite-${i}`;
+                sprite.dataset.fruit = fruits[i];
+                sprite.dataset.seasonIndex = 0;
+                sprite.style.backgroundImage = `url('images/${fruits[i]}.png')`;
+                sprite.style.backgroundPosition = '0 0';
+                
+                sprite.addEventListener('click', () => changeSeason(i));
+                grid.appendChild(sprite);
+                sprites.push(sprite);
+            }
+        }
+        
+        // Change the season of a sprite
+        function changeSeason(index) {
+            const sprite = sprites[index];
+            let seasonIndex = parseInt(sprite.dataset.seasonIndex);
+            seasonIndex = (seasonIndex + 1) % 4;
+            sprite.dataset.seasonIndex = seasonIndex;
+            
+            // Update the background position to show the correct season
+            sprite.style.backgroundPosition = `0 ${-50 * seasonIndex}px`;
+            
+            // Play a sound
+            playSound(index, seasonIndex);
+            
+            // Log the change
+            logToDebug(`Changement de ${fruits[index]} à la saison "${seasons[seasonIndex]}"`);
+
+            socket.send(JSON.stringify({
+                fruit: fruits[index],
+                season: seasons[seasonIndex]
+            }));
+            logToDebug(`Envoyé au serveur WebSocket: ${fruits[index]} - ${seasons[seasonIndex]}`);
+        }
+        
+        // Initialize Tone.js
+        function setupTone() {
+            // Create a polyphonic synth
+            synth = new Tone.PolySynth(Tone.Synth).toDestination();
+            
+            // Create the magenta music rnn
+            try {
+                logToDebug('Chargement du modèle magenta...');
+                const musicRNN = new music_rnn.MusicRNN('https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/basic_rnn');
+                musicRNN.initialize().then(() => {
+                    logToDebug('Modèle magenta chargé avec succès');
+                }).catch(err => {
+                    logToDebug('Erreur lors du chargement du modèle magenta: ' + err.message);
+                });
+            } catch (err) {
+                logToDebug('Erreur avec magenta.js: ' + err.message);
+            }
+        }
+        
+        // Play a sound based on the fruit and season
+        function playSound(fruitIndex, seasonIndex) {
+            if (!synth) return;
+            
+            // Create a different note for each fruit
+            const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5'];
+            
+            // Adjust parameters based on season
+            let note = notes[fruitIndex];
+            let duration;
+            let volume;
+            
+            switch (seasonIndex) {
+                case 0: // Spring
+                    duration = "8n";
+                    volume = -10;
+                    break;
+                case 1: // Summer
+                    duration = "4n";
+                    volume = -5;
+                    break;
+                case 2: // Autumn
+                    duration = "2n";
+                    volume = -8;
+                    break;
+                case 3: // Winter
+                    duration = "1n";
+                    volume = -12;
+                    break;
+            }
+            
+            // Play the note
+            synth.triggerAttackRelease(note, duration, Tone.now(), volume);
+        }
+        
+        // Play all sounds in sequence
+        function playAllSounds() {
+            if (!synth) return;
+            
+            // Start the audio context if it's suspended
+            if (Tone.context.state !== 'running') {
+                Tone.context.resume();
+            }
+            
+            // Play a sequence of notes
+            const now = Tone.now();
+            for (let i = 0; i < 9; i++) {
+                const seasonIndex = parseInt(sprites[i].dataset.seasonIndex);
+                const notes = ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5'];
+                synth.triggerAttackRelease(notes[i], "8n", now + i * 0.2);
+            }
+            
+            logToDebug('Lecture de la séquence musicale');
+        }
+        
+        // Connect to WebSocket server
+        function connectWebSocket() {
+            try {
+                socket = new WebSocket('ws://localhost:8080');
+                
+                socket.onopen = function(event) {
+                    updateStatus('WebSocket: Connecté');
+                    logToDebug('Connexion WebSocket établie');
+                };
+                
+                socket.onmessage = function(event) {
+                    logToDebug('Message reçu: ' + event.data);
+                };
+                
+                socket.onerror = function(error) {
+                    updateStatus('WebSocket: Erreur');
+                    logToDebug('Erreur WebSocket: ' + error);
+                };
+                
+                socket.onclose = function(event) {
+                    updateStatus('WebSocket: Déconnecté');
+                    logToDebug('Connexion WebSocket fermée');
+                    
+                    // Try to reconnect after 5 seconds
+                    setTimeout(connectWebSocket, 5000);
+                };
+            } catch (error) {
+                updateStatus('WebSocket: Erreur');
+                logToDebug('Erreur lors de la création de WebSocket: ' + error.message);
+            }
+        }
+        
+        // Update connection status
+        function updateStatus(text) {
+            document.getElementById('connection-status').textContent = text;
+        }
+        
+        // Log to debug console
+        function logToDebug(message) {
+            const debug = document.getElementById('debug');
+            const logLine = document.createElement('div');
+            logLine.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            debug.appendChild(logLine);
+            debug.scrollTop = debug.scrollHeight;
+        }
+        
+        // Initialize the service worker for PWA
+        async function registerServiceWorker() {
+            if ('serviceWorker' in navigator) {
+                try {
+                    const registration = await navigator.serviceWorker.register('./service-worker.js');
+                    logToDebug('Service Worker enregistré avec succès');
+                } catch (error) {
+                    logToDebug('Erreur lors de l\'enregistrement du Service Worker: ' + error.message);
+                }
+            } else {
+                logToDebug('Les Service Workers ne sont pas supportés par ce navigateur');
+            }
+        }
+        
+        // Initialize the app
+        window.addEventListener('load', () => {
+            setupGrid();
+            setupTone();
+            connectWebSocket();
+            registerServiceWorker();
+            
+            document.getElementById('playAll').addEventListener('click', () => {
+                playAllSounds();
+            });
+            
+            // Log app initialization
+            logToDebug('Application CreaTune initialisée');
+        });
+    </script>
+</body>
+</html>
