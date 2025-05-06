@@ -1,5 +1,7 @@
 # CreaTune
 
+Tests the WebSocket server for Basile project.
+
 ## Install
 
 ```bash
