@@ -3,11 +3,38 @@
 
 const WebSocket = require('ws');
 const http = require('http');
+const fs = require('fs');
+const path = require('path');
 
 // Création du serveur HTTP
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('Serveur WebSocket CreaTune');
+  const filePath = path.join(__dirname, 'web', req.url === '/' ? 'index.html' : req.url);
+  const extname = path.extname(filePath);
+  const contentType = {
+    '.html': 'text/html',
+    '.css': 'text/css',
+    '.js': 'application/javascript',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.gif': 'image/gif',
+    '.svg': 'image/svg+xml',
+  }[extname] || 'application/octet-stream';
+
+  fs.readFile(filePath, (err, content) => {
+    if (err) {
+      if (err.code === 'ENOENT') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('404 Not Found');
+      } else {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('500 Internal Server Error');
+      }
+    } else {
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(content, 'utf-8');
+    }
+  });
 });
 
 // Création du serveur WebSocket
@@ -38,7 +65,7 @@ wss.on('connection', (ws) => {
   ws.on('message', (message) => {
     console.log(`Message reçu: ${message}`);
     // Renvoyer un écho du message
-    ws.send(`Écho: ${message}`);
+    //ws.send(`Écho: ${message}`);
     // Renvoie le message à tous les clients connectés
     wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN && client !== ws) {

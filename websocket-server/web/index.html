@@ -7,7 +7,6 @@
     <title>CreaTune</title>
     <link rel="manifest" href="manifest.json">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/magenta/1.23.1/magenta.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -210,6 +209,7 @@
         function connectWebSocket() {
             try {
                 socket = new WebSocket('ws://localhost:8080');
+                // socket = new WebSocket('ws://192.168.178.33:8080');
                 
                 socket.onopen = function(event) {
                     updateStatus('WebSocket: Connecté');
